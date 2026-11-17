@@ -1,0 +1,235 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Registro de clientes · Pruebas de caja negra</title>
+<style>
+  :root {
+    --fondo: #e9eef4;
+    --panel: #ffffff;
+    --tinta: #14213d;
+    --suave: #5b6779;
+    --linea: #cfd8e3;
+    --azul: #2f55a4;
+    --ok: #17724f;
+    --ok-fondo: #dff3ea;
+    --mal: #a8261c;
+    --mal-fondo: #fbe4e1;
+    --fuente: "Segoe UI", system-ui, -apple-system, "Helvetica Neue", Arial, sans-serif;
+    --mono: ui-monospace, "Cascadia Mono", Consolas, Menlo, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--fondo); color: var(--tinta);
+    font: 16px/1.5 var(--fuente);
+  }
+  header { padding: 28px 24px 8px; max-width: 1180px; margin: 0 auto; }
+  h1 { font-size: 1.6rem; margin: 0 0 4px; font-weight: 650; letter-spacing: -0.01em; }
+  header p { margin: 0; color: var(--suave); max-width: 62ch; }
+  main {
+    max-width: 1180px; margin: 0 auto; padding: 20px 24px 48px;
+    display: grid; grid-template-columns: minmax(300px, 380px) 1fr; gap: 20px; align-items: start;
+  }
+  @media (max-width: 860px) { main { grid-template-columns: 1fr; } }
+  section { background: var(--panel); border: 1px solid var(--linea); border-radius: 10px; padding: 20px; }
+  h2 { font-size: 1.05rem; margin: 0 0 14px; font-weight: 650; }
+
+  label { display: block; font-weight: 600; margin: 14px 0 4px; }
+  .regla { font-weight: 400; color: var(--suave); font-size: .88rem; }
+  input {
+    width: 100%; padding: 10px 12px; font: inherit; color: inherit;
+    border: 1.5px solid var(--linea); border-radius: 6px; background: #fff;
+  }
+  input:focus-visible, button:focus-visible, tr[tabindex]:focus-visible {
+    outline: 3px solid #9db7ee; outline-offset: 1px; border-color: var(--azul);
+  }
+  .contador { font-size: .82rem; color: var(--suave); margin-top: 3px; font-family: var(--mono); }
+  button {
+    font: inherit; font-weight: 600; cursor: pointer; border-radius: 6px;
+    padding: 10px 16px; border: 1.5px solid var(--azul);
+  }
+  .primario { background: var(--azul); color: #fff; margin-top: 18px; width: 100%; }
+  .primario:hover { background: #254589; }
+  .secundario { background: #fff; color: var(--azul); }
+  .secundario:hover { background: #eef3fc; }
+  button:disabled { opacity: .55; cursor: progress; }
+
+  #respuesta { margin-top: 20px; border-radius: 8px; padding: 14px 16px; border: 1.5px solid var(--linea); background: #f6f8fb; }
+  #respuesta .codigo { font: 700 2.4rem/1 var(--mono); }
+  #respuesta .texto { margin-top: 6px; overflow-wrap: anywhere; }
+  #respuesta.ok { background: var(--ok-fondo); border-color: var(--ok); color: var(--ok); }
+  #respuesta.mal { background: var(--mal-fondo); border-color: var(--mal); color: var(--mal); }
+  #respuesta .vacio { color: var(--suave); font-size: .95rem; }
+
+  .barra { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; margin-bottom: 12px; }
+  .barra h2 { margin: 0; }
+  #resumen { font-weight: 600; }
+  .tabla-wrap { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: .92rem; min-width: 680px; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--linea); white-space: nowrap; }
+  th { font-weight: 650; color: var(--suave); font-size: .85rem; }
+  td.mono { font-family: var(--mono); }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: #f1f5fb; }
+  .valida { color: var(--ok); font-weight: 600; }
+  .invalida { color: var(--mal); font-weight: 600; }
+  .pill { display: inline-block; padding: 1px 9px; border-radius: 999px; font-weight: 650; font-size: .82rem; }
+  .pill.paso { background: var(--ok-fondo); color: var(--ok); }
+  .pill.fallo { background: var(--mal-fondo); color: var(--mal); }
+  .nota { color: var(--suave); font-size: .86rem; margin: 12px 0 0; }
+</style>
+</head>
+<body>
+<header>
+  <h1>Registro de clientes</h1>
+  <p>Formulario conectado a <code>POST /clientes</code>, junto con la tabla de casos de caja negra (partición de equivalencia y valores límite).</p>
+</header>
+
+<main>
+  <section aria-labelledby="t-form">
+    <h2 id="t-form">Probar un registro</h2>
+    <form id="form" novalidate>
+      <label for="nombre">Nombre <span class="regla">(3 a 30 caracteres)</span></label>
+      <input id="nombre" name="nombre" autocomplete="off">
+      <div class="contador" id="contador">0 caracteres</div>
+
+      <label for="edad">Edad <span class="regla">(18 a 99)</span></label>
+      <input id="edad" name="edad" autocomplete="off" inputmode="numeric">
+
+      <button class="primario" type="submit" id="enviar">Registrar cliente</button>
+    </form>
+
+    <div id="respuesta" aria-live="polite">
+      <div class="vacio">Envía el formulario para ver el código HTTP que devuelve el servidor.</div>
+    </div>
+    <p class="nota">Este formulario no valida nada en el navegador: lo que ves es la respuesta real del servidor.</p>
+  </section>
+
+  <section aria-labelledby="t-casos">
+    <div class="barra">
+      <h2 id="t-casos">Casos de prueba</h2>
+      <div>
+        <span id="resumen"></span>
+        <button class="secundario" id="correr" type="button">Ejecutar los 16 casos</button>
+      </div>
+    </div>
+    <div class="tabla-wrap">
+      <table>
+        <thead>
+          <tr><th>ID</th><th>Nombre</th><th>Edad</th><th>Partición</th><th>Técnica</th><th>Esperado</th><th>Obtenido</th><th>Resultado</th></tr>
+        </thead>
+        <tbody id="casos"></tbody>
+      </table>
+    </div>
+    <p class="nota">Haz clic en una fila para cargar ese caso en el formulario.</p>
+  </section>
+</main>
+
+<script>
+  const a = (n) => "a".repeat(n);
+  const CASOS = [
+    ["CP-01", "Carlos", "17",  "inválida", "Edad < 18",        "BVA: límite inferior − 1", 400],
+    ["CP-02", "Carlos", "18",  "válida",   "Edad 18–99",       "BVA: límite inferior",     200],
+    ["CP-03", "Carlos", "19",  "válida",   "Edad 18–99",       "BVA: inferior + 1",        200],
+    ["CP-04", "Carlos", "45",  "válida",   "Edad 18–99",       "Partición",                200],
+    ["CP-05", "Carlos", "98",  "válida",   "Edad 18–99",       "BVA: superior − 1",        200],
+    ["CP-06", "Carlos", "99",  "válida",   "Edad 18–99",       "BVA: límite superior",     200],
+    ["CP-07", "Carlos", "100", "inválida", "Edad > 99",        "BVA: límite superior + 1", 400],
+    ["CP-08", "Carlos", "abc", "inválida", "Edad no numérica", "Partición",                400],
+    ["CP-09", a(2),     "25",  "inválida", "Nombre < 3",       "BVA: límite inferior − 1", 400],
+    ["CP-10", a(3),     "25",  "válida",   "Nombre 3–30",      "BVA: límite inferior",     200],
+    ["CP-11", a(4),     "25",  "válida",   "Nombre 3–30",      "BVA: inferior + 1",        200],
+    ["CP-12", "Mariana","25",  "válida",   "Nombre 3–30",      "Partición",                200],
+    ["CP-13", a(29),    "25",  "válida",   "Nombre 3–30",      "BVA: superior − 1",        200],
+    ["CP-14", a(30),    "25",  "válida",   "Nombre 3–30",      "BVA: límite superior",     200],
+    ["CP-15", a(31),    "25",  "inválida", "Nombre > 30",      "BVA: límite superior + 1", 400],
+    ["CP-16", "",       "25",  "inválida", "Nombre vacío",     "Partición",                400],
+  ].map(([id, nombre, edad, tipo, particion, tecnica, esperado]) => ({ id, nombre, edad, tipo, particion, tecnica, esperado }));
+
+  const $ = (id) => document.getElementById(id);
+  const form = $("form"), nombre = $("nombre"), edad = $("edad");
+
+  async function registrar(n, e) {
+    const cuerpo = new URLSearchParams({ nombre: n, edad: e });
+    const r = await fetch("/clientes", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: cuerpo
+    });
+    return { codigo: r.status, texto: await r.text() };
+  }
+
+  function mostrar({ codigo, texto }) {
+    const caja = $("respuesta");
+    caja.className = codigo === 200 ? "ok" : "mal";
+    caja.innerHTML = "";
+    const c = document.createElement("div"); c.className = "codigo"; c.textContent = codigo;
+    const t = document.createElement("div"); t.className = "texto"; t.textContent = texto;
+    caja.append(c, t);
+  }
+
+  nombre.addEventListener("input", () => {
+    const n = nombre.value.trim().length;
+    $("contador").textContent = n + (n === 1 ? " carácter" : " caracteres");
+  });
+
+  form.addEventListener("submit", async (ev) => {
+    ev.preventDefault();
+    $("enviar").disabled = true;
+    try { mostrar(await registrar(nombre.value, edad.value)); }
+    catch { mostrar({ codigo: "—", texto: "No se pudo conectar con el servidor. ¿Está corriendo ServidorRegistro?" }); }
+    $("enviar").disabled = false;
+  });
+
+  function cargar(c) {
+    nombre.value = c.nombre; edad.value = c.edad;
+    nombre.dispatchEvent(new Event("input"));
+    nombre.focus();
+  }
+
+  function largo(n) { return n.length > 12 ? `${n.slice(0, 3)}… (${n.length})` : `"${n}" (${n.length})`; }
+
+  const cuerpo = $("casos");
+  CASOS.forEach((c) => {
+    const tr = document.createElement("tr");
+    tr.tabIndex = 0;
+    tr.id = c.id;
+    tr.innerHTML = `
+      <td class="mono">${c.id}</td>
+      <td class="mono">${largo(c.nombre)}</td>
+      <td class="mono">${c.edad}</td>
+      <td class="${c.tipo === "válida" ? "valida" : "invalida"}">${c.particion}</td>
+      <td>${c.tecnica}</td>
+      <td class="mono">${c.esperado}</td>
+      <td class="mono" data-obt>–</td>
+      <td data-res></td>`;
+    tr.addEventListener("click", () => cargar(c));
+    tr.addEventListener("keydown", (e) => { if (e.key === "Enter") cargar(c); });
+    cuerpo.appendChild(tr);
+  });
+
+  $("correr").addEventListener("click", async () => {
+    const boton = $("correr");
+    boton.disabled = true;
+    let ok = 0;
+    for (const c of CASOS) {
+      const fila = $(c.id);
+      try {
+        const { codigo } = await registrar(c.nombre, c.edad);
+        const paso = codigo === c.esperado;
+        if (paso) ok++;
+        fila.querySelector("[data-obt]").textContent = codigo;
+        fila.querySelector("[data-res]").innerHTML =
+          `<span class="pill ${paso ? "paso" : "fallo"}">${paso ? "Pasó" : "Falló"}</span>`;
+      } catch {
+        fila.querySelector("[data-obt]").textContent = "—";
+        fila.querySelector("[data-res]").innerHTML = `<span class="pill fallo">Sin respuesta</span>`;
+      }
+    }
+    $("resumen").textContent = `${ok}/${CASOS.length} pasaron `;
+    boton.disabled = false;
+  });
+</script>
+</body>
+</html>
